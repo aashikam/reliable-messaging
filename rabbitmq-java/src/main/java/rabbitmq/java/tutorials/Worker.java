@@ -51,7 +51,7 @@ public class Worker {
     }
 }
 
-// Round Robin dispatching
+// Round Robin dispatching TODo: Check if this tallies with shared topic concepts
 // parallelise work
 // if two Worker instances are run they will both get the messages from the queue
 // java -cp $CP Worker
@@ -92,5 +92,30 @@ public class Worker {
 // cant declare the same queue with different parameters - cant make an existing queue durable
 // Now we need to mark our messages as persistent -
 // by setting MessageProperties (which implements BasicProperties) to the value PERSISTENT_TEXT_PLAIN.
-// saves the messages to the disk
+// message won't be lost. Although it tells RabbitMQ to save the message to disk,
+// there is still a short time window when RabbitMQ has accepted a message and hasn't saved it yet.
+// Also, RabbitMQ doesn't do fsync(2) for every message -- it may be just saved to cache and not really
+// written to the disk.
+// The persistence guarantees aren't strong, but it's more than enough for our simple task queue.
+// If you need a stronger guarantee then you can use publisher confirms.
+
+// Fair dispatch
+// You might have noticed that the dispatching still doesn't work exactly as we want.
+// For example in a situation with two workers, when all odd messages are heavy and even messages are light,
+// one worker will be constantly busy and the other one will do hardly any work. Well,
+// RabbitMQ doesn't know anything about that and will still dispatch messages evenly.
+//
+//This happens because RabbitMQ just dispatches a message when the message enters the queue.
+// It doesn't look at the number of unacknowledged messages for a consumer.
+// It just blindly dispatches every n-th message to the n-th consumer.
+
+// In order to defeat that we can use the basicQos method with the prefetchCount = 1 setting.
+// This tells RabbitMQ not to give more than one message to a worker at a time. Or, in other words,
+// don't dispatch a new message to a worker until it has processed and acknowledged the previous one.
+// Instead, it will dispatch it to the next worker that is not still busy.
+
+// If all the workers are busy, your queue can fill up.
+// You will want to keep an eye on that, and maybe add more workers,
+// or have some other strategy.
+
 //
